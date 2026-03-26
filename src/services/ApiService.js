@@ -1,29 +1,70 @@
 // services/ApiService.js
-// Replace mock functions with real API calls from your backend developer
+
+import axios from 'axios';
+
+const API_KEY =
+  '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';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export const ApiService = {
-  // ── Send message to AI ──────────────────────────────────────────────────────
-  sendMessage: async ({ message, emotion, sessionId }) => {
-    await delay(1500); // Remove this line when connecting real API
-    // TODO: Replace with real API call
-    // const response = await fetch('YOUR_API_URL/chat', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ message, emotion, sessionId }),
-    // });
-    // return await response.json();
-    return {
-      id: Date.now().toString(),
-      text: 'I hear you. That sounds really heavy. Do you want to tell me more about what happened?',
-    };
+  sendMessage: async ({ message, emotion }) => {
+    try {
+      const response = await axios.post(
+        'https://openrouter.ai/api/v1/chat/completions',
+        {
+          model: 'meta-llama/llama-3-8b-instruct',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an empathetic mental health listener. User emotion: ${
+                emotion || 'unknown'
+              }`,
+            },
+            {
+              role: 'user',
+              content: message,
+            },
+          ],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${API_KEY}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'http://localhost',
+            'X-Title': 'Unheard App',
+          },
+        },
+      );
+
+      console.log('FULL RESPONSE:', JSON.stringify(response.data, null, 2));
+
+      const aiText =
+        response?.data?.choices?.[0]?.message?.content ||
+        response?.data?.choices?.[0]?.text ||
+        "I'm here with you. Tell me more.";
+
+      return {
+        id: Date.now().toString(),
+        text: aiText,
+      };
+    } catch (error) {
+      const errorMsg =
+        error?.response?.data?.error?.message ||
+        error.message ||
+        'Unknown error';
+
+      console.log('ERROR FULL:', JSON.stringify(error, null, 2));
+
+      return {
+        id: Date.now().toString(),
+        text: `ERROR: ${errorMsg}`, // 👈 show real error in chat
+      };
+    }
   },
 
-  // ── Find human counselor ────────────────────────────────────────────────────
   findCounselor: async ({ filter }) => {
-    await delay(3000);
-    // TODO: Replace with real API call
+    await delay(1000);
     return {
       counselorId: 'c001',
       name: 'Support Specialist',
@@ -31,17 +72,13 @@ export const ApiService = {
     };
   },
 
-  // ── Save session ────────────────────────────────────────────────────────────
   saveSession: async session => {
     await delay(500);
-    // TODO: Replace with real API call
     return { success: true };
   },
 
-  // ── Save memory consent ─────────────────────────────────────────────────────
   saveMemoryConsent: async ({ consent }) => {
     await delay(300);
-    // TODO: Replace with real API call
     return { success: true };
   },
 };

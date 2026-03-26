@@ -83,9 +83,9 @@ export const PLANS = [
 
 // Prompt Chips
 export const PROMPT_CHIPS = [
-  { id: '1', label: 'I feel overwhelmed' },
+  { id: '1', label: 'I feel lonely' },
   { id: '2', label: 'I want to vent' },
-  { id: '3', label: 'I feel lonely' },
+  { id: '3', label: 'I feel overwhelmed' },
 ];
 
 // Matching Filters

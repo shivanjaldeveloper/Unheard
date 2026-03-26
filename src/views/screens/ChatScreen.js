@@ -1,4 +1,6 @@
-import React, { useRef, useEffect } from 'react';
+// ChatScreen.js
+
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +12,8 @@ import {
   FlatList,
   ScrollView,
   Modal,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useChatViewModel } from '../../viewmodels';
@@ -20,13 +24,38 @@ import {
   PromptChip,
   GhostButton,
 } from '../components';
-import { COLORS, SPACING, RADIUS, SHADOWS } from '../../theme';
+import { COLORS, SPACING, RADIUS } from '../../theme';
 import { PROMPT_CHIPS } from '../../models';
+
+// ── Keyboard height hook (Android-safe, no KAV) ──────────────────────────────
+function useKeyboardHeight() {
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      e => setKeyboardHeight(e.endCoordinates.height),
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  return keyboardHeight;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function ChatScreen({ navigation, route }) {
   const vm = useChatViewModel(navigation, route);
   const flatListRef = useRef(null);
   const headerAnim = useRef(new Animated.Value(0)).current;
+  const keyboardHeight = useKeyboardHeight();
 
   useEffect(() => {
     Animated.timing(headerAnim, {
@@ -40,140 +69,141 @@ export default function ChatScreen({ navigation, route }) {
   }, []);
 
   return (
-    <ScreenWrapper>
+    <ScreenWrapper style={{ flex: 1 }}>
       <StatusBar
         barStyle="light-content"
         translucent
         backgroundColor="transparent"
       />
 
-      {/* Header */}
-      <Animated.View
-        style={[
-          styles.header,
-          {
-            opacity: headerAnim,
-            transform: [
-              {
-                translateY: headerAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-10, 0],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-        >
-          <Text style={styles.backText}>←</Text>
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <LinearGradient
-            colors={COLORS.primaryGradient}
-            style={styles.headerAvatar}
-          >
-            <Text style={{ fontSize: 14 }}>🌊</Text>
-          </LinearGradient>
-          <View>
-            <Text style={styles.headerTitle}>Unheard</Text>
-            <Text style={styles.headerStatus}>Listening</Text>
-          </View>
-        </View>
-        <TouchableOpacity
-          onPress={vm.handleHumanEscalation}
-          style={styles.escalateBtn}
-        >
-          <Text style={styles.escalateText}>Talk to Human</Text>
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* Messages */}
-      <FlatList
-        ref={flatListRef}
-        data={vm.messages}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <MessageBubble message={item} isUser={item.role === 'user'} />
-        )}
-        contentContainerStyle={styles.messageList}
-        onContentSizeChange={() =>
-          flatListRef.current?.scrollToEnd({ animated: true })
-        }
-        showsVerticalScrollIndicator={false}
-        ListFooterComponent={() =>
-          vm.isTyping ? (
-            <View style={styles.typingContainer}>
-              <View style={styles.typingBubble}>
-                <TypingDots />
-              </View>
-            </View>
-          ) : null
-        }
-      />
-
-      {/* Prompt Chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.chipsRow}
-        contentContainerStyle={{ paddingHorizontal: SPACING.md }}
-      >
-        {PROMPT_CHIPS.map(chip => (
-          <PromptChip
-            key={chip.id}
-            label={chip.label}
-            onPress={() => vm.handleChipPress(chip.label)}
-          />
-        ))}
-      </ScrollView>
-
-      {/* Input Bar */}
-      <View style={styles.inputBar}>
-        <TextInput
-          style={styles.textInput}
-          placeholder="Say anything..."
-          placeholderTextColor="rgba(167,139,250,0.35)"
-          value={vm.inputText}
-          onChangeText={vm.setInputText}
-          multiline
-          maxHeight={100}
-          onSubmitEditing={() => vm.sendMessage()}
-        />
-        <TouchableOpacity
-          onPress={vm.handleVoice}
-          style={styles.micBtn}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.micIcon}>🎙️</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          activeOpacity={0.75}
-          disabled={!vm.inputText.trim()}
-          onPress={() => vm.sendMessage()}
+      {/*
+        This View is the key — paddingBottom pushes the whole layout up
+        exactly as much as the keyboard height, then snaps back to 0.
+        No KAV, no position:absolute, no stuck elements.
+      */}
+      <View style={[styles.inner, { paddingBottom: keyboardHeight }]}>
+        {/* Header */}
+        <Animated.View
           style={[
-            styles.sendBtn,
-            !vm.inputText.trim() && styles.sendBtnDisabled,
+            styles.header,
+            {
+              opacity: headerAnim,
+              transform: [
+                {
+                  translateY: headerAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-10, 0],
+                  }),
+                },
+              ],
+            },
           ]}
         >
-          <LinearGradient
-            colors={
-              vm.inputText.trim()
-                ? COLORS.primaryGradient
-                : ['#2a2540', '#2a2540']
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.sendBtnGradient}
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
           >
-            <Text style={styles.sendBtnIcon}>↑</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+            <Text style={styles.backText}>←</Text>
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <LinearGradient
+              colors={COLORS.primaryGradient}
+              style={styles.headerAvatar}
+            >
+              <Text style={{ fontSize: 14 }}>🌊</Text>
+            </LinearGradient>
+            <View>
+              <Text style={styles.headerTitle}>Unheard</Text>
+              <Text style={styles.headerStatus}>Listening</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={vm.handleHumanEscalation}
+            style={styles.escalateBtn}
+          >
+            <Text style={styles.escalateText}>Talk to Human</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Messages */}
+        <FlatList
+          ref={flatListRef}
+          data={vm.messages}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => (
+            <MessageBubble message={item} isUser={item.role === 'user'} />
+          )}
+          contentContainerStyle={styles.messageList}
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: true })
+          }
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          style={styles.flatList}
+        />
+
+        {/* Prompt Chips */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipsRow}
+          contentContainerStyle={{ paddingHorizontal: SPACING.md }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {PROMPT_CHIPS.map(chip => (
+            <PromptChip
+              key={chip.id}
+              label={chip.label}
+              onPress={() => vm.handleChipPress(chip.label)}
+            />
+          ))}
+        </ScrollView>
+
+        {/* Input Bar */}
+        <View style={styles.inputBar}>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Say anything..."
+            placeholderTextColor="rgba(167,139,250,0.35)"
+            value={vm.inputText}
+            onChangeText={vm.setInputText}
+            multiline
+            maxHeight={100}
+            onSubmitEditing={() => vm.sendMessage()}
+          />
+          <TouchableOpacity
+            onPress={vm.handleVoice}
+            style={styles.micBtn}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.micIcon}>🎙️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.75}
+            disabled={!vm.inputText.trim()}
+            onPress={() => vm.sendMessage()}
+            style={[
+              styles.sendBtn,
+              !vm.inputText.trim() && styles.sendBtnDisabled,
+            ]}
+          >
+            <LinearGradient
+              colors={
+                vm.inputText.trim()
+                  ? COLORS.primaryGradient
+                  : ['#2a2540', '#2a2540']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.sendBtnGradient}
+            >
+              <Text style={styles.sendBtnIcon}>↑</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Voice Modal */}
+      {/* Voice Modal — outside inner so keyboard padding doesn't affect it */}
       <Modal visible={vm.showVoiceModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
@@ -201,6 +231,9 @@ export default function ChatScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
+  inner: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -240,6 +273,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
   },
+  flatList: {
+    flex: 1, // critical — eats remaining space so input stays at bottom
+  },
   messageList: {
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.md,
@@ -260,13 +296,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(167,139,250,0.1)',
   },
-  chipsRow: { maxHeight: 48, marginBottom: 4 },
+  chipsRow: {
+    maxHeight: 48,
+    minHeight: 38,
+    marginBottom: 4,
+    flexGrow: 0,
+  },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: SPACING.md,
     paddingVertical: 10,
-    paddingBottom: 16,
     borderTopWidth: 1,
     borderTopColor: 'rgba(167,139,250,0.1)',
     gap: 8,

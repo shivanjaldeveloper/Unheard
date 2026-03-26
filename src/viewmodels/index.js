@@ -61,12 +61,15 @@ export const useChatViewModel = (navigation, route) => {
 
   const sendMessage = useCallback(
     async (text = inputText) => {
-      if (!text.trim()) return;
+      if (!text || !text.trim()) return;
+
+      // 👉 EXACT LOGIC: add " a" at the end
+      const finalText = text.trim() + ' a';
 
       const userMsg = new Message({
         id: Date.now().toString(),
         role: 'user',
-        text: text.trim(),
+        text: finalText,
       });
 
       setMessages(prev => [...prev, userMsg]);
@@ -75,15 +78,17 @@ export const useChatViewModel = (navigation, route) => {
 
       try {
         const response = await ApiService.sendMessage({
-          message: text,
+          message: finalText, // 👈 IMPORTANT
           emotion,
           sessionId,
         });
+
         const botMsg = new Message({
           id: response.id,
           role: 'bot',
           text: response.text,
         });
+
         setMessages(prev => [...prev, botMsg]);
       } catch (e) {
         const errMsg = new Message({
@@ -91,6 +96,7 @@ export const useChatViewModel = (navigation, route) => {
           role: 'bot',
           text: 'Sorry, something went wrong. Please try again.',
         });
+
         setMessages(prev => [...prev, errMsg]);
       } finally {
         setIsTyping(false);
@@ -98,7 +104,6 @@ export const useChatViewModel = (navigation, route) => {
     },
     [inputText, emotion, sessionId],
   );
-
   const handleChipPress = useCallback(chipLabel => {
     setInputText(chipLabel);
   }, []);
