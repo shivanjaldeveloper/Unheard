@@ -1,20 +1,21 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated, StatusBar } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
-import { useWelcomeViewModel } from '../../viewmodels';
-import { PrimaryButton, ScreenWrapper } from '../components';
-import { COLORS, SPACING, SHADOWS } from '../../theme';
+import { ScreenWrapper } from '../components';
+import { SPACING } from '../../theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const API_BASE = 'https://unheardapi.primeapps.co.in/api/auth';
+const API_TOKEN = 'Bearer Y7N7Mh9Z7ZLeMSYspeVwdXJ2Ky2LXc';
 
 export default function WelcomeScreen({ navigation }) {
-  const { handleStart } = useWelcomeViewModel(navigation);
-
   const logoAnim = useRef(new Animated.Value(0)).current;
   const titleAnim = useRef(new Animated.Value(0)).current;
   const subtitleAnim = useRef(new Animated.Value(0)).current;
-  const buttonAnim = useRef(new Animated.Value(0)).current;
   const floatAnim = useRef(new Animated.Value(0)).current;
+  const exitAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    // Entry animations
     Animated.stagger(160, [
       Animated.spring(logoAnim, {
         toValue: 1,
@@ -34,14 +35,9 @@ export default function WelcomeScreen({ navigation }) {
         friction: 8,
         useNativeDriver: true,
       }),
-      Animated.spring(buttonAnim, {
-        toValue: 1,
-        tension: 60,
-        friction: 8,
-        useNativeDriver: true,
-      }),
     ]).start();
 
+    // Float loop
     Animated.loop(
       Animated.sequence([
         Animated.timing(floatAnim, {
@@ -56,7 +52,69 @@ export default function WelcomeScreen({ navigation }) {
         }),
       ]),
     ).start();
+
+    // After 2 seconds: check token then navigate
+    const timer = setTimeout(() => {
+      checkTokenAndNavigate();
+    }, 2000);
+
+    return () => clearTimeout(timer);
   }, []);
+
+  const navigateWithFade = (screenName, params = {}) => {
+    Animated.timing(exitAnim, {
+      toValue: 0,
+      duration: 350,
+      useNativeDriver: true,
+    }).start(() => {
+      navigation.replace(screenName, params);
+    });
+  };
+
+  const checkTokenAndNavigate = async () => {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+
+      if (!token) {
+        // No token stored — go to Login
+        navigateWithFade('Login');
+        return;
+      }
+
+      // Verify token with backend
+      const res = await fetch(`${API_BASE}/verifytoken?token=${token}`, {
+        method: 'POST',
+        headers: { Authorization: API_TOKEN },
+      });
+      const data = await res.json();
+
+      if (res.ok && data.status === 'success') {
+        // Token valid — update stored profile with latest data
+        await AsyncStorage.setItem('authToken', data.token);
+        await AsyncStorage.setItem('mobile', data.mobile);
+        await AsyncStorage.setItem('profileId', data.profileid);
+        await AsyncStorage.setItem('userProfile', JSON.stringify(data));
+
+        // Go straight to EmotionalEntry
+        navigateWithFade('EmotionalEntry', {
+          token: data.token,
+          profileId: data.profileid,
+        });
+      } else {
+        // Token invalid or expired — clear storage and go to Login
+        await AsyncStorage.multiRemove([
+          'authToken',
+          'mobile',
+          'profileId',
+          'userProfile',
+        ]);
+        navigateWithFade('Login');
+      }
+    } catch (e) {
+      // Network error or storage issue — fall back to Login
+      navigateWithFade('Login');
+    }
+  };
 
   const makeSlide = anim => ({
     opacity: anim,
@@ -71,72 +129,66 @@ export default function WelcomeScreen({ navigation }) {
   });
 
   return (
-    <ScreenWrapper>
-      <StatusBar
-        barStyle="light-content"
-        translucent
-        backgroundColor="transparent"
-      />
+    <Animated.View style={[styles.root, { opacity: exitAnim }]}>
+      <ScreenWrapper>
+        <StatusBar
+          barStyle="light-content"
+          translucent
+          backgroundColor="transparent"
+        />
 
-      {/* Blobs */}
-      <View style={styles.blobTopLeft} />
-      <View style={styles.blobBottomRight} />
+        {/* Blobs */}
+        <View style={styles.blobTopLeft} />
+        <View style={styles.blobBottomRight} />
 
-      <View style={styles.center}>
-        {/* Logo */}
-        <Animated.View
-          style={{
-            opacity: logoAnim,
-            transform: [
-              {
-                translateY: floatAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -10],
-                }),
-              },
-              {
-                translateY: logoAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [30, 0],
-                }),
-              },
-            ],
-            marginBottom: SPACING.xl,
-          }}
-        >
-          <View style={styles.logoRing}>
-            <View style={styles.logoInner}>
-              <Text style={styles.logoEmoji}>🌊</Text>
+        <View style={styles.center}>
+          {/* Logo */}
+          <Animated.View
+            style={{
+              opacity: logoAnim,
+              transform: [
+                {
+                  translateY: floatAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -10],
+                  }),
+                },
+                {
+                  translateY: logoAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [30, 0],
+                  }),
+                },
+              ],
+              marginBottom: SPACING.xl,
+            }}
+          >
+            <View style={styles.logoRing}>
+              <View style={styles.logoInner}>
+                <Text style={styles.logoEmoji}>🌊</Text>
+              </View>
             </View>
-          </View>
-        </Animated.View>
+          </Animated.View>
 
-        <Animated.Text style={[styles.title, makeSlide(titleAnim)]}>
-          Unheard
+          <Animated.Text style={[styles.title, makeSlide(titleAnim)]}>
+            Unheard
+          </Animated.Text>
+
+          <Animated.Text style={[styles.subtitle, makeSlide(subtitleAnim)]}>
+            Say what you couldn't{'\n'}say anywhere
+          </Animated.Text>
+        </View>
+
+        <Animated.Text style={[styles.footerHint, { opacity: subtitleAnim }]}>
+          No account needed · Always private
         </Animated.Text>
-
-        <Animated.Text style={[styles.subtitle, makeSlide(subtitleAnim)]}>
-          Say what you couldn't{'\n'}say anywhere
-        </Animated.Text>
-
-        <Animated.View
-          style={[
-            { width: '100%', alignItems: 'center' },
-            makeSlide(buttonAnim),
-          ]}
-        >
-          <PrimaryButton label="Start Talking" onPress={handleStart} />
-        </Animated.View>
-      </View>
-
-      <Animated.Text style={[styles.footerHint, { opacity: subtitleAnim }]}>
-        No account needed · Always private
-      </Animated.Text>
-    </ScreenWrapper>
+      </ScreenWrapper>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   center: {
     flex: 1,
     alignItems: 'center',
@@ -196,7 +248,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 26,
     letterSpacing: 0.3,
-    marginBottom: 52,
   },
   footerHint: {
     position: 'absolute',

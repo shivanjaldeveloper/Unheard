@@ -1,6 +1,6 @@
-// ChatScreen.js
+// screens/ChatScreen.js
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -10,36 +10,48 @@ import {
   Animated,
   StatusBar,
   FlatList,
-  ScrollView,
   Modal,
   Keyboard,
   Platform,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import { useChatViewModel } from '../../viewmodels';
 import {
   ScreenWrapper,
   MessageBubble,
   TypingDots,
-  PromptChip,
   GhostButton,
 } from '../components';
 import { COLORS, SPACING, RADIUS } from '../../theme';
-import { PROMPT_CHIPS } from '../../models';
 
-// ── Keyboard height hook (Android-safe, no KAV) ──────────────────────────────
+// Enable LayoutAnimation on Android
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// ── Keyboard height hook ──────────────────────────────────────────────────────
+// iOS only — Android uses windowSoftInputMode="adjustResize" so the OS
+// shrinks the window automatically and we never need a manual offset there.
 function useKeyboardHeight() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
-    const show = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      e => setKeyboardHeight(e.endCoordinates.height),
-    );
-    const hide = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => setKeyboardHeight(0),
-    );
+    if (Platform.OS !== 'ios') return;
+
+    const show = Keyboard.addListener('keyboardWillShow', e => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hide = Keyboard.addListener('keyboardWillHide', () => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setKeyboardHeight(0);
+    });
     return () => {
       show.remove();
       hide.remove();
@@ -48,14 +60,38 @@ function useKeyboardHeight() {
 
   return keyboardHeight;
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ChatScreen({ navigation, route }) {
-  const vm = useChatViewModel(navigation, route);
+  const { chatid, emotion, initialUserMessage, initialAssistantReply } =
+    route.params ?? {};
+
+  const seedMessages = [];
+  if (initialUserMessage) {
+    seedMessages.push({
+      id: 'seed-user',
+      role: 'user',
+      text: initialUserMessage,
+    });
+  }
+  if (initialAssistantReply) {
+    seedMessages.push({
+      id: 'seed-assistant',
+      role: 'assistant',
+      text: initialAssistantReply,
+    });
+  }
+
+  const vm = useChatViewModel(navigation, route, {
+    chatid,
+    emotion,
+    seedMessages,
+  });
+
   const flatListRef = useRef(null);
   const headerAnim = useRef(new Animated.Value(0)).current;
-  const keyboardHeight = useKeyboardHeight();
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight(); // 0 on Android always
 
   useEffect(() => {
     Animated.timing(headerAnim, {
@@ -63,30 +99,46 @@ export default function ChatScreen({ navigation, route }) {
       duration: 400,
       useNativeDriver: true,
     }).start();
-    if (vm.initialMessage?.trim()) {
-      setTimeout(() => vm.sendMessage(vm.initialMessage), 600);
-    }
   }, []);
 
-  return (
-    <ScreenWrapper style={{ flex: 1 }}>
-      <StatusBar
-        barStyle="light-content"
-        translucent
-        backgroundColor="transparent"
-      />
+  const scrollToEnd = useCallback(() => {
+    flatListRef.current?.scrollToEnd({ animated: true });
+  }, []);
 
-      {/*
-        This View is the key — paddingBottom pushes the whole layout up
-        exactly as much as the keyboard height, then snaps back to 0.
-        No KAV, no position:absolute, no stuck elements.
-      */}
-      <View style={[styles.inner, { paddingBottom: keyboardHeight }]}>
-        {/* Header */}
+  // Read inputText at call time — avoids stale closure on Android (last char bug)
+  const handleSend = useCallback(() => {
+    if (vm.inputText.trim()) {
+      vm.sendMessage();
+    }
+  }, [vm]);
+
+  // ── Bottom padding calculation ─────────────────────────────────────────────
+  // iOS  : when keyboard is up, pad by keyboard height (input rides just above it)
+  //        when keyboard is down, pad by safe-area bottom (home indicator gap)
+  // Android: always just safe-area bottom — OS handles the rest via adjustResize
+  const safeBottom = Math.max(insets.bottom, 10);
+  const inputBarBottom =
+    Platform.OS === 'ios'
+      ? keyboardHeight > 0
+        ? keyboardHeight + 4
+        : safeBottom
+      : safeBottom;
+
+  return (
+    <View style={styles.root}>
+      <ScreenWrapper style={{ flex: 1 }}>
+        <StatusBar
+          barStyle="light-content"
+          translucent
+          backgroundColor="transparent"
+        />
+
+        {/* ── Header ── */}
         <Animated.View
           style={[
             styles.header,
             {
+              paddingTop: insets.top + 10,
               opacity: headerAnim,
               transform: [
                 {
@@ -105,6 +157,7 @@ export default function ChatScreen({ navigation, route }) {
           >
             <Text style={styles.backText}>←</Text>
           </TouchableOpacity>
+
           <View style={styles.headerCenter}>
             <LinearGradient
               colors={COLORS.primaryGradient}
@@ -117,6 +170,7 @@ export default function ChatScreen({ navigation, route }) {
               <Text style={styles.headerStatus}>Listening</Text>
             </View>
           </View>
+
           <TouchableOpacity
             onPress={vm.handleHumanEscalation}
             style={styles.escalateBtn}
@@ -125,7 +179,7 @@ export default function ChatScreen({ navigation, route }) {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Messages */}
+        {/* ── Messages ── */}
         <FlatList
           ref={flatListRef}
           data={vm.messages}
@@ -134,33 +188,25 @@ export default function ChatScreen({ navigation, route }) {
             <MessageBubble message={item} isUser={item.role === 'user'} />
           )}
           contentContainerStyle={styles.messageList}
-          onContentSizeChange={() =>
-            flatListRef.current?.scrollToEnd({ animated: true })
-          }
+          onContentSizeChange={scrollToEnd}
+          onLayout={scrollToEnd}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           style={styles.flatList}
         />
 
-        {/* Prompt Chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.chipsRow}
-          contentContainerStyle={{ paddingHorizontal: SPACING.md }}
-          keyboardShouldPersistTaps="handled"
-        >
-          {PROMPT_CHIPS.map(chip => (
-            <PromptChip
-              key={chip.id}
-              label={chip.label}
-              onPress={() => vm.handleChipPress(chip.label)}
-            />
-          ))}
-        </ScrollView>
+        {/* ── Typing indicator ── */}
+        {vm.isTyping && (
+          <View style={styles.typingContainer}>
+            <View style={styles.typingBubble}>
+              <TypingDots />
+            </View>
+          </View>
+        )}
 
-        {/* Input Bar */}
-        <View style={styles.inputBar}>
+        {/* ── Input Bar ── */}
+        <View style={[styles.inputBar, { paddingBottom: inputBarBottom }]}>
           <TextInput
             style={styles.textInput}
             placeholder="Say anything..."
@@ -168,8 +214,8 @@ export default function ChatScreen({ navigation, route }) {
             value={vm.inputText}
             onChangeText={vm.setInputText}
             multiline
-            maxHeight={100}
-            onSubmitEditing={() => vm.sendMessage()}
+            blurOnSubmit={false}
+            returnKeyType="default"
           />
           <TouchableOpacity
             onPress={vm.handleVoice}
@@ -181,7 +227,7 @@ export default function ChatScreen({ navigation, route }) {
           <TouchableOpacity
             activeOpacity={0.75}
             disabled={!vm.inputText.trim()}
-            onPress={() => vm.sendMessage()}
+            onPress={handleSend}
             style={[
               styles.sendBtn,
               !vm.inputText.trim() && styles.sendBtnDisabled,
@@ -201,43 +247,45 @@ export default function ChatScreen({ navigation, route }) {
             </LinearGradient>
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Voice Modal — outside inner so keyboard padding doesn't affect it */}
-      <Modal visible={vm.showVoiceModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Switch to Voice?</Text>
-            <Text style={styles.modalSubtitle}>
-              We can switch to voice if you prefer
-            </Text>
-            <View style={{ height: SPACING.lg }} />
-            <GhostButton
-              label="Try Voice"
-              onPress={() => {
-                vm.setShowVoiceModal(false);
-                navigation.navigate('Voice');
-              }}
-            />
-            <GhostButton
-              label="Continue Chat"
-              onPress={() => vm.setShowVoiceModal(false)}
-            />
+        {/* ── Voice Modal ── */}
+        <Modal visible={vm.showVoiceModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View
+              style={[
+                styles.modalSheet,
+                { paddingBottom: insets.bottom + SPACING.xl },
+              ]}
+            >
+              <Text style={styles.modalTitle}>Switch to Voice?</Text>
+              <Text style={styles.modalSubtitle}>
+                We can switch to voice if you prefer
+              </Text>
+              <View style={{ height: SPACING.lg }} />
+              <GhostButton
+                label="Try Voice"
+                onPress={() => {
+                  vm.setShowVoiceModal(false);
+                  navigation.navigate('Voice');
+                }}
+              />
+              <GhostButton
+                label="Continue Chat"
+                onPress={() => vm.setShowVoiceModal(false)}
+              />
+            </View>
           </View>
-        </View>
-      </Modal>
-    </ScreenWrapper>
+        </Modal>
+      </ScreenWrapper>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  inner: {
-    flex: 1,
-  },
+  root: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 44,
     paddingBottom: 14,
     paddingHorizontal: SPACING.md,
     borderBottomWidth: 1,
@@ -273,9 +321,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
   },
-  flatList: {
-    flex: 1, // critical — eats remaining space so input stays at bottom
-  },
+  flatList: { flex: 1 },
   messageList: {
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.md,
@@ -296,17 +342,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(167,139,250,0.1)',
   },
-  chipsRow: {
-    maxHeight: 48,
-    minHeight: 38,
-    marginBottom: 4,
-    flexGrow: 0,
-  },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: 'rgba(167,139,250,0.1)',
     gap: 8,
@@ -322,6 +362,7 @@ const styles = StyleSheet.create({
     color: '#f5f3ff',
     fontSize: 15,
     lineHeight: 21,
+    maxHeight: 120,
   },
   micBtn: {
     width: 44,

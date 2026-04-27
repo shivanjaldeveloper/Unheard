@@ -44,66 +44,88 @@ export const useEmotionalEntryViewModel = navigation => {
 };
 
 // ─── Chat ViewModel ───────────────────────────────────────────────────────────
-export const useChatViewModel = (navigation, route) => {
-  const { emotion, message: initialMessage } = route?.params || {};
-  const sessionId = Date.now().toString();
+/**
+ * options.chatid       — the chat session id from createChat API
+ * options.emotion      — mood string
+ * options.seedMessages — array of { id, role, text } to pre-populate the chat
+ *                        role must be 'user' or 'assistant'
+ */
+export const useChatViewModel = (navigation, route, options = {}) => {
+  const { chatid, emotion, seedMessages = [] } = options;
 
-  const [messages, setMessages] = useState([
-    new Message({
-      id: '0',
-      role: 'bot',
-      text: "I'm here. Take your time — you can say anything.",
-    }),
-  ]);
+  // ── Build the initial messages list from seedMessages ──────────────────────
+  // If seedMessages were provided (coming from EmotionalEntryScreen), use them.
+  // Otherwise fall back to the old static greeting so other entry points still work.
+  const buildInitialMessages = () => {
+    if (seedMessages.length > 0) {
+      return seedMessages.map(
+        m =>
+          new Message({
+            id: m.id ?? Date.now().toString() + Math.random(),
+            role: m.role, // 'user' or 'assistant'
+            text: m.text,
+          }),
+      );
+    }
+    // Fallback static greeting (used if ChatScreen is opened without seed data)
+    return [
+      new Message({
+        id: '0',
+        role: 'assistant',
+        text: "I'm here. Take your time — you can say anything.",
+      }),
+    ];
+  };
+
+  const [messages, setMessages] = useState(buildInitialMessages);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
 
+  // ── Send follow-up messages ────────────────────────────────────────────────
   const sendMessage = useCallback(
     async (text = inputText) => {
       if (!text || !text.trim()) return;
 
-      // 👉 EXACT LOGIC: add " a" at the end
-      const finalText = text.trim() + ' a';
+      const trimmed = text.trim();
 
+      // Add the user bubble immediately
       const userMsg = new Message({
         id: Date.now().toString(),
         role: 'user',
-        text: finalText,
+        text: trimmed,
       });
-
       setMessages(prev => [...prev, userMsg]);
       setInputText('');
       setIsTyping(true);
 
       try {
-        const response = await ApiService.sendMessage({
-          message: finalText, // 👈 IMPORTANT
-          emotion,
-          sessionId,
+        // Use ApiService.sendMessage with chatid + message
+        const reply = await ApiService.sendMessage({
+          chatid,
+          message: trimmed,
         });
 
         const botMsg = new Message({
-          id: response.id,
-          role: 'bot',
-          text: response.text,
+          id: Date.now().toString() + '-bot',
+          role: 'assistant',
+          text: reply, // ApiService.sendMessage returns the plain reply string
         });
-
         setMessages(prev => [...prev, botMsg]);
       } catch (e) {
         const errMsg = new Message({
-          id: Date.now().toString(),
-          role: 'bot',
+          id: Date.now().toString() + '-err',
+          role: 'assistant',
           text: 'Sorry, something went wrong. Please try again.',
         });
-
         setMessages(prev => [...prev, errMsg]);
       } finally {
         setIsTyping(false);
       }
     },
-    [inputText, emotion, sessionId],
+    [inputText, chatid],
   );
+
   const handleChipPress = useCallback(chipLabel => {
     setInputText(chipLabel);
   }, []);
@@ -120,7 +142,6 @@ export const useChatViewModel = (navigation, route) => {
 
   return {
     emotion,
-    initialMessage,
     messages,
     inputText,
     setInputText,
@@ -157,9 +178,10 @@ export const useMatchingViewModel = navigation => {
     setSelectedFilter(prev => (prev === id ? null : id));
   }, []);
 
-  const handleFound = useCallback(() => {
-    navigation.navigate('HumanChat');
-  }, [navigation]);
+  const handleFound = useCallback(
+    () => navigation.navigate('HumanChat'),
+    [navigation],
+  );
 
   return { selectedFilter, isSearching, handleFilterSelect, handleFound };
 };

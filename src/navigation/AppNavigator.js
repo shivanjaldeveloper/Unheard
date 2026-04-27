@@ -4,11 +4,11 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import WelcomeScreen from '../views/screens/WelcomeScreen';
+import LoginScreen from '../views/screens/Loginscreen ';
+import VerifyOtpScreen from '../views/screens/Verifyotpscreen';
+import RegisterScreen from '../views/screens/Registerscreen';
 import EmotionalEntryScreen from '../views/screens/EmotionEntryScreen';
 import ChatScreen from '../views/screens/ChatScreen';
-// import WelcomeScreen from '..views/screens/WelcomeScreen';
-// import EmotionalEntryScreen from '../views/screens/EmotionalEntryScreen';
-// import ChatScreen from '../views/screens/ChatScreen';
 import {
   VoiceScreen,
   HumanEscalationScreen,
@@ -34,7 +34,13 @@ export default function AppNavigator() {
           animationDuration: 350,
         }}
       >
+        {/* ── Auth Flow ── */}
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
+        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="VerifyOtp" component={VerifyOtpScreen} />
+        <Stack.Screen name="Register" component={RegisterScreen} />
+
+        {/* ── Main App ── */}
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="EmotionalEntry" component={EmotionalEntryScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />

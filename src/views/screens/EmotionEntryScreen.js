@@ -1,4 +1,6 @@
-import React, { useRef, useEffect } from 'react';
+// screens/EmotionalEntryScreen.js
+
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +10,8 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useEmotionalEntryViewModel } from '../../viewmodels';
 import {
@@ -17,9 +21,11 @@ import {
   EmotionCard,
 } from '../components';
 import { COLORS, SPACING, RADIUS } from '../../theme';
+import { ApiService } from '../../services/ApiService';
 
 export default function EmotionalEntryScreen({ navigation }) {
   const vm = useEmotionalEntryViewModel(navigation);
+  const [isLoading, setIsLoading] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
@@ -63,6 +69,50 @@ export default function EmotionalEntryScreen({ navigation }) {
     });
   }, []);
 
+  // Both an emotion card AND a non-empty message are required
+  const canContinue = !!vm.selectedEmotion && vm.inputText.trim().length > 0;
+
+  const handleContinue = async () => {
+    if (!canContinue || isLoading) return;
+
+    setIsLoading(true);
+    try {
+      // ── Step 1: Create a new chat session ──────────────────────────────
+      const chatid = await ApiService.createChat();
+
+      // ── Step 2: Resolve the mood label from selected emotion id ────────
+      const selectedEmotionObj = vm.emotions.find(
+        e => e.id === vm.selectedEmotion,
+      );
+      const mood = selectedEmotionObj?.label ?? vm.selectedEmotion ?? 'unknown';
+
+      // ── Step 3: Start the chat — sends mood + user's message to API ────
+      const { reply, title } = await ApiService.startChat({
+        chatid,
+        mood,
+        prompt: vm.inputText.trim(),
+      });
+
+      // ── Step 4: Navigate to ChatScreen with all seeded data ────────────
+      navigation.navigate('Chat', {
+        chatid,
+        emotion: mood,
+        initialUserMessage: vm.inputText.trim(), // shown as first user bubble
+        initialAssistantReply: reply, // shown as first AI bubble
+        chatTitle: title, // shown in header
+      });
+    } catch (error) {
+      console.error('[EmotionalEntry] flow error:', error);
+      Alert.alert(
+        'Something went wrong',
+        error?.message || 'Please try again.',
+        [{ text: 'OK' }],
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <ScreenWrapper>
       <StatusBar
@@ -82,10 +132,7 @@ export default function EmotionalEntryScreen({ navigation }) {
           <Animated.Text
             style={[
               styles.heading,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
             ]}
           >
             How are you feeling{'\n'}right now?
@@ -95,6 +142,7 @@ export default function EmotionalEntryScreen({ navigation }) {
             No right or wrong answer. Just pick what feels closest.
           </Animated.Text>
 
+          {/* ── Emotion Cards ── */}
           <View style={styles.emotionGrid}>
             {vm.emotions.map((emotion, index) => (
               <EmotionCard
@@ -107,6 +155,7 @@ export default function EmotionalEntryScreen({ navigation }) {
             ))}
           </View>
 
+          {/* ── Text Input ── */}
           <Animated.View
             style={[
               styles.inputContainer,
@@ -125,7 +174,7 @@ export default function EmotionalEntryScreen({ navigation }) {
           >
             <TextInput
               style={styles.textInput}
-              placeholder="What's on your mind? (optional)"
+              placeholder="What's on your mind? (required)"
               placeholderTextColor="rgba(167,139,250,0.4)"
               value={vm.inputText}
               onChangeText={vm.setInputText}
@@ -135,14 +184,23 @@ export default function EmotionalEntryScreen({ navigation }) {
             />
           </Animated.View>
 
+          {/* ── Continue Button / Loader ── */}
           <Animated.View
             style={{ opacity: inputAnim, width: '100%', alignItems: 'center' }}
           >
-            <PrimaryButton
-              label="Continue →"
-              onPress={vm.handleContinue}
-              disabled={!vm.canContinue}
-            />
+            {isLoading ? (
+              <ActivityIndicator
+                color={COLORS.primary ?? '#a78bfa'}
+                size="large"
+                style={styles.loader}
+              />
+            ) : (
+              <PrimaryButton
+                label="Continue →"
+                onPress={handleContinue}
+                disabled={!canContinue}
+              />
+            )}
           </Animated.View>
 
           <View style={{ height: SPACING.xl }} />
@@ -193,4 +251,5 @@ const styles = StyleSheet.create({
     minHeight: 110,
     lineHeight: 23,
   },
+  loader: { marginVertical: 16 },
 });
