@@ -265,8 +265,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: {
     paddingHorizontal: SPACING.xl,
-    paddingTop: 60,
-    paddingBottom: 60,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.xl,
   },
   header: {
     alignItems: 'center',

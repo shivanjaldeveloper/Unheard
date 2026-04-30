@@ -12,6 +12,8 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Platform,
+  TouchableOpacity,
 } from 'react-native';
 import { useEmotionalEntryViewModel } from '../../viewmodels';
 import {
@@ -69,37 +71,28 @@ export default function EmotionalEntryScreen({ navigation }) {
     });
   }, []);
 
-  // Both an emotion card AND a non-empty message are required
   const canContinue = !!vm.selectedEmotion && vm.inputText.trim().length > 0;
 
   const handleContinue = async () => {
     if (!canContinue || isLoading) return;
-
     setIsLoading(true);
     try {
-      // ── Step 1: Create a new chat session ──────────────────────────────
       const chatid = await ApiService.createChat();
-
-      // ── Step 2: Resolve the mood label from selected emotion id ────────
       const selectedEmotionObj = vm.emotions.find(
         e => e.id === vm.selectedEmotion,
       );
       const mood = selectedEmotionObj?.label ?? vm.selectedEmotion ?? 'unknown';
-
-      // ── Step 3: Start the chat — sends mood + user's message to API ────
       const { reply, title } = await ApiService.startChat({
         chatid,
         mood,
         prompt: vm.inputText.trim(),
       });
-
-      // ── Step 4: Navigate to ChatScreen with all seeded data ────────────
       navigation.navigate('Chat', {
         chatid,
         emotion: mood,
-        initialUserMessage: vm.inputText.trim(), // shown as first user bubble
-        initialAssistantReply: reply, // shown as first AI bubble
-        chatTitle: title, // shown in header
+        initialUserMessage: vm.inputText.trim(),
+        initialAssistantReply: reply,
+        chatTitle: title,
       });
     } catch (error) {
       console.error('[EmotionalEntry] flow error:', error);
@@ -120,14 +113,29 @@ export default function EmotionalEntryScreen({ navigation }) {
         translucent
         backgroundColor="transparent"
       />
-      <KeyboardAvoidingView behavior="height" style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <BackButton onPress={() => navigation.goBack()} />
-          <View style={{ height: SPACING.lg }} />
+          {/* ── Top Row: Back (left) + History (right) ── */}
+          <View style={styles.topRow}>
+            <BackButton onPress={() => navigation.goBack()} />
+            <TouchableOpacity
+              style={styles.historyBtn}
+              activeOpacity={0.75}
+              onPress={() => navigation.navigate('ChatHistory')}
+            >
+              <Text style={styles.historyIcon}>🕘</Text>
+              <Text style={styles.historyLabel}>History</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ height: SPACING.md }} />
 
           <Animated.Text
             style={[
@@ -211,11 +219,40 @@ export default function EmotionalEntryScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   scroll: {
-    paddingTop: 64,
+    paddingTop: SPACING.md,
     paddingHorizontal: SPACING.lg,
     alignItems: 'center',
   },
+
+  // ── Top row ──────────────────────────────────────────────────────────
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: SPACING.lg,
+  },
+  historyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    borderWidth: 1.5,
+    borderColor: 'rgba(167,139,250,0.3)',
+    backgroundColor: 'rgba(167,139,250,0.08)',
+  },
+  historyIcon: { fontSize: 14 },
+  historyLabel: {
+    color: 'rgba(196,181,253,0.85)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+
   heading: {
     fontFamily: 'Georgia',
     fontSize: 30,

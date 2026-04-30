@@ -13,8 +13,7 @@ import {
   Modal,
   Keyboard,
   Platform,
-  LayoutAnimation,
-  UIManager,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -26,41 +25,6 @@ import {
   GhostButton,
 } from '../components';
 import { COLORS, SPACING, RADIUS } from '../../theme';
-
-// Enable LayoutAnimation on Android
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-// ── Keyboard height hook ──────────────────────────────────────────────────────
-// iOS only — Android uses windowSoftInputMode="adjustResize" so the OS
-// shrinks the window automatically and we never need a manual offset there.
-function useKeyboardHeight() {
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-  useEffect(() => {
-    if (Platform.OS !== 'ios') return;
-
-    const show = Keyboard.addListener('keyboardWillShow', e => {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hide = Keyboard.addListener('keyboardWillHide', () => {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setKeyboardHeight(0);
-    });
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
-  return keyboardHeight;
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function ChatScreen({ navigation, route }) {
   const { chatid, emotion, initialUserMessage, initialAssistantReply } =
@@ -91,7 +55,6 @@ export default function ChatScreen({ navigation, route }) {
   const flatListRef = useRef(null);
   const headerAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
-  const keyboardHeight = useKeyboardHeight(); // 0 on Android always
 
   useEffect(() => {
     Animated.timing(headerAnim, {
@@ -105,34 +68,42 @@ export default function ChatScreen({ navigation, route }) {
     flatListRef.current?.scrollToEnd({ animated: true });
   }, []);
 
-  // Read inputText at call time — avoids stale closure on Android (last char bug)
   const handleSend = useCallback(() => {
     if (vm.inputText.trim()) {
       vm.sendMessage();
     }
   }, [vm]);
 
-  // ── Bottom padding calculation ─────────────────────────────────────────────
-  // iOS  : when keyboard is up, pad by keyboard height (input rides just above it)
-  //        when keyboard is down, pad by safe-area bottom (home indicator gap)
-  // Android: always just safe-area bottom — OS handles the rest via adjustResize
-  const safeBottom = Math.max(insets.bottom, 10);
-  const inputBarBottom =
-    Platform.OS === 'ios'
-      ? keyboardHeight > 0
-        ? keyboardHeight + 4
-        : safeBottom
-      : safeBottom;
-
   return (
-    <View style={styles.root}>
-      <ScreenWrapper style={{ flex: 1 }}>
-        <StatusBar
-          barStyle="light-content"
-          translucent
-          backgroundColor="transparent"
-        />
+    // ScreenWrapper already applies insets.top/bottom via safeContent,
+    // but ChatScreen needs fine-grained control over the bottom because
+    // the input bar must sit just above the keyboard / nav bar.
+    // So we use the raw gradient here and manage insets manually.
+    <LinearGradient
+      colors={COLORS.darkBackgroundGradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.root}
+    >
+      <StatusBar
+        barStyle="light-content"
+        translucent
+        backgroundColor="transparent"
+      />
 
+      {/*
+        KeyboardAvoidingView handles the keyboard on both devices:
+        - iOS: 'padding' shifts the whole view up
+        - Android: 'height' shrinks the view (works with adjustResize in manifest)
+
+        We wrap everything — header, list, input — so the input bar rides
+        exactly above the keyboard no matter the device.
+      */}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
         {/* ── Header ── */}
         <Animated.View
           style={[
@@ -205,8 +176,17 @@ export default function ChatScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* ── Input Bar ── */}
-        <View style={[styles.inputBar, { paddingBottom: inputBarBottom }]}>
+        {/* ── Input Bar ──
+          paddingBottom uses insets.bottom so the bar clears the gesture
+          bar on Moto Edge 60 Pro and the nav buttons on Redmi A4.
+          A minimum of 8 prevents it from touching the edge on older devices.
+        */}
+        <View
+          style={[
+            styles.inputBar,
+            { paddingBottom: Math.max(insets.bottom, 8) },
+          ]}
+        >
           <TextInput
             style={styles.textInput}
             placeholder="Say anything..."
@@ -247,42 +227,43 @@ export default function ChatScreen({ navigation, route }) {
             </LinearGradient>
           </TouchableOpacity>
         </View>
+      </KeyboardAvoidingView>
 
-        {/* ── Voice Modal ── */}
-        <Modal visible={vm.showVoiceModal} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View
-              style={[
-                styles.modalSheet,
-                { paddingBottom: insets.bottom + SPACING.xl },
-              ]}
-            >
-              <Text style={styles.modalTitle}>Switch to Voice?</Text>
-              <Text style={styles.modalSubtitle}>
-                We can switch to voice if you prefer
-              </Text>
-              <View style={{ height: SPACING.lg }} />
-              <GhostButton
-                label="Try Voice"
-                onPress={() => {
-                  vm.setShowVoiceModal(false);
-                  navigation.navigate('Voice');
-                }}
-              />
-              <GhostButton
-                label="Continue Chat"
-                onPress={() => vm.setShowVoiceModal(false)}
-              />
-            </View>
+      {/* ── Voice Modal ── */}
+      <Modal visible={vm.showVoiceModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalSheet,
+              { paddingBottom: insets.bottom + SPACING.xl },
+            ]}
+          >
+            <Text style={styles.modalTitle}>Switch to Voice?</Text>
+            <Text style={styles.modalSubtitle}>
+              We can switch to voice if you prefer
+            </Text>
+            <View style={{ height: SPACING.lg }} />
+            <GhostButton
+              label="Try Voice"
+              onPress={() => {
+                vm.setShowVoiceModal(false);
+                navigation.navigate('Voice');
+              }}
+            />
+            <GhostButton
+              label="Continue Chat"
+              onPress={() => vm.setShowVoiceModal(false)}
+            />
           </View>
-        </Modal>
-      </ScreenWrapper>
-    </View>
+        </View>
+      </Modal>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,5 +1,12 @@
 import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, StatusBar } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Animated,
+  StatusBar,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenWrapper } from '../components';
 import { SPACING } from '../../theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,9 +20,11 @@ export default function WelcomeScreen({ navigation }) {
   const subtitleAnim = useRef(new Animated.Value(0)).current;
   const floatAnim = useRef(new Animated.Value(0)).current;
   const exitAnim = useRef(new Animated.Value(1)).current;
+  // ScreenWrapper already pads for safe area, so we don't need insets here.
+  // But the footerHint is absolute-positioned inside ScreenWrapper's safeContent,
+  // so bottom: SPACING.lg is enough (safeContent already has insets.bottom).
 
   useEffect(() => {
-    // Entry animations
     Animated.stagger(160, [
       Animated.spring(logoAnim, {
         toValue: 1,
@@ -37,7 +46,6 @@ export default function WelcomeScreen({ navigation }) {
       }),
     ]).start();
 
-    // Float loop
     Animated.loop(
       Animated.sequence([
         Animated.timing(floatAnim, {
@@ -53,7 +61,6 @@ export default function WelcomeScreen({ navigation }) {
       ]),
     ).start();
 
-    // After 2 seconds: check token then navigate
     const timer = setTimeout(() => {
       checkTokenAndNavigate();
     }, 2000);
@@ -74,34 +81,25 @@ export default function WelcomeScreen({ navigation }) {
   const checkTokenAndNavigate = async () => {
     try {
       const token = await AsyncStorage.getItem('authToken');
-
       if (!token) {
-        // No token stored — go to Login
         navigateWithFade('Login');
         return;
       }
-
-      // Verify token with backend
       const res = await fetch(`${API_BASE}/verifytoken?token=${token}`, {
         method: 'POST',
         headers: { Authorization: API_TOKEN },
       });
       const data = await res.json();
-
       if (res.ok && data.status === 'success') {
-        // Token valid — update stored profile with latest data
         await AsyncStorage.setItem('authToken', data.token);
         await AsyncStorage.setItem('mobile', data.mobile);
         await AsyncStorage.setItem('profileId', data.profileid);
         await AsyncStorage.setItem('userProfile', JSON.stringify(data));
-
-        // Go straight to EmotionalEntry
         navigateWithFade('EmotionalEntry', {
           token: data.token,
           profileId: data.profileid,
         });
       } else {
-        // Token invalid or expired — clear storage and go to Login
         await AsyncStorage.multiRemove([
           'authToken',
           'mobile',
@@ -111,7 +109,6 @@ export default function WelcomeScreen({ navigation }) {
         navigateWithFade('Login');
       }
     } catch (e) {
-      // Network error or storage issue — fall back to Login
       navigateWithFade('Login');
     }
   };
@@ -179,6 +176,11 @@ export default function WelcomeScreen({ navigation }) {
           </Animated.Text>
         </View>
 
+        {/*
+          footerHint is absolutely positioned.
+          ScreenWrapper's safeContent already has paddingBottom = insets.bottom,
+          so bottom: SPACING.lg clears the gesture bar / nav buttons on all devices.
+        */}
         <Animated.Text style={[styles.footerHint, { opacity: subtitleAnim }]}>
           No account needed · Always private
         </Animated.Text>
@@ -249,9 +251,11 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     letterSpacing: 0.3,
   },
+  // bottom: SPACING.lg works because ScreenWrapper.safeContent already
+  // has paddingBottom = insets.bottom, so this clears any nav bar.
   footerHint: {
     position: 'absolute',
-    bottom: 44,
+    bottom: SPACING.lg,
     alignSelf: 'center',
     color: 'rgba(196,181,253,0.45)',
     fontSize: 12,

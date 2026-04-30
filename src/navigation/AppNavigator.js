@@ -9,6 +9,8 @@ import VerifyOtpScreen from '../views/screens/Verifyotpscreen';
 import RegisterScreen from '../views/screens/Registerscreen';
 import EmotionalEntryScreen from '../views/screens/EmotionEntryScreen';
 import ChatScreen from '../views/screens/ChatScreen';
+import ChatHistoryScreen from '../views/screens/ChatHistoryScreen'; // ← NEW
+
 import {
   VoiceScreen,
   HumanEscalationScreen,
@@ -42,6 +44,7 @@ export default function AppNavigator() {
 
         {/* ── Main App ── */}
         <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="ChatHistory" component={ChatHistoryScreen} />
         <Stack.Screen name="EmotionalEntry" component={EmotionalEntryScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />
         <Stack.Screen name="Voice" component={VoiceScreen} />

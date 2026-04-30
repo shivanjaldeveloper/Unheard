@@ -9,8 +9,11 @@ import {
   FlatList,
   TextInput,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   useVoiceViewModel,
   useHumanEscalationViewModel,
@@ -33,6 +36,7 @@ import { MATCHING_FILTERS, REFLECTION_OPTIONS, PLANS } from '../../models';
 // ─── VoiceScreen ──────────────────────────────────────────────────────────────
 export function VoiceScreen({ navigation }) {
   const { isPaused, handlePause, handleEnd } = useVoiceViewModel(navigation);
+  const insets = useSafeAreaInsets();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulse2Anim = useRef(new Animated.Value(1)).current;
 
@@ -77,7 +81,7 @@ export function VoiceScreen({ navigation }) {
         translucent
         backgroundColor="transparent"
       />
-      <View style={styles.voice_center}>
+      <View style={[styles.voice_center, { paddingTop: insets.top }]}>
         <Animated.View
           style={[styles.voice_ring2, { transform: [{ scale: pulse2Anim }] }]}
         />
@@ -94,7 +98,14 @@ export function VoiceScreen({ navigation }) {
           {isPaused ? 'Paused' : 'Listening...'}
         </Text>
       </View>
-      <View style={styles.voice_btns}>
+      {/* paddingBottom uses insets.bottom so buttons never hide behind
+          the gesture bar (Moto Edge 60 Pro) or nav buttons (Redmi A4) */}
+      <View
+        style={[
+          styles.voice_btns,
+          { paddingBottom: Math.max(insets.bottom + SPACING.md, SPACING.xl) },
+        ]}
+      >
         <TouchableOpacity
           onPress={handlePause}
           style={styles.voice_pauseBtn}
@@ -225,6 +236,7 @@ export function MatchingScreen({ navigation }) {
 
 // ─── HumanChatScreen ──────────────────────────────────────────────────────────
 export function HumanChatScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState([
     {
       id: '0',
@@ -245,71 +257,93 @@ export function HumanChatScreen({ navigation }) {
   };
 
   return (
-    <ScreenWrapper>
+    <LinearGradient
+      colors={COLORS.darkBackgroundGradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.fullscreen}
+    >
       <StatusBar
         barStyle="light-content"
         translucent
         backgroundColor="transparent"
       />
-      <View style={styles.chat_header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ marginRight: 10 }}
-        >
-          <Text style={{ color: 'rgba(167,139,250,0.7)', fontSize: 22 }}>
-            ←
-          </Text>
-        </TouchableOpacity>
-        <View style={styles.human_badge}>
-          <Text style={styles.human_badge_text}>
-            🟢 You are talking to a real person
-          </Text>
-        </View>
-      </View>
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={i => i.id}
-        renderItem={({ item }) => (
-          <MessageBubble message={item} isUser={item.role === 'user'} />
-        )}
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: 16,
-          paddingBottom: 12,
-        }}
-        onContentSizeChange={() =>
-          flatListRef.current?.scrollToEnd({ animated: true })
-        }
-        showsVerticalScrollIndicator={false}
-      />
-      <View style={styles.shared_inputBar}>
-        <TextInput
-          style={styles.shared_textInput}
-          placeholder="Say anything..."
-          placeholderTextColor="rgba(167,139,250,0.35)"
-          value={inputText}
-          onChangeText={setInputText}
-          multiline
-          maxHeight={100}
-          onSubmitEditing={sendMessage}
-        />
-        <TouchableOpacity
-          onPress={sendMessage}
-          disabled={!inputText.trim()}
-          style={[styles.shared_sendBtn, !inputText.trim() && { opacity: 0.4 }]}
-        >
-          <LinearGradient
-            colors={COLORS.primaryGradient}
-            style={styles.shared_sendGradient}
+      <KeyboardAvoidingView
+        style={styles.fullscreen}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {/* Header uses insets.top so it clears the status bar on all devices */}
+        <View style={[styles.chat_header, { paddingTop: insets.top + 10 }]}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{ marginRight: 10 }}
           >
-            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>
-              ↑
+            <Text style={{ color: 'rgba(167,139,250,0.7)', fontSize: 22 }}>
+              ←
             </Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-    </ScreenWrapper>
+          </TouchableOpacity>
+          <View style={styles.human_badge}>
+            <Text style={styles.human_badge_text}>
+              🟢 You are talking to a real person
+            </Text>
+          </View>
+        </View>
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={i => i.id}
+          renderItem={({ item }) => (
+            <MessageBubble message={item} isUser={item.role === 'user'} />
+          )}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingTop: 16,
+            paddingBottom: 12,
+          }}
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: true })
+          }
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        />
+        {/* Input bar clears nav bar / gesture bar via insets.bottom */}
+        <View
+          style={[
+            styles.shared_inputBar,
+            { paddingBottom: Math.max(insets.bottom, 8) },
+          ]}
+        >
+          <TextInput
+            style={styles.shared_textInput}
+            placeholder="Say anything..."
+            placeholderTextColor="rgba(167,139,250,0.35)"
+            value={inputText}
+            onChangeText={setInputText}
+            multiline
+            maxHeight={100}
+            blurOnSubmit={false}
+          />
+          <TouchableOpacity
+            onPress={sendMessage}
+            disabled={!inputText.trim()}
+            style={[
+              styles.shared_sendBtn,
+              !inputText.trim() && { opacity: 0.4 },
+            ]}
+          >
+            <LinearGradient
+              colors={COLORS.primaryGradient}
+              style={styles.shared_sendGradient}
+            >
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>
+                ↑
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
 
@@ -425,6 +459,9 @@ export function MemoryConsentScreen({ navigation }) {
 // ─── HomeScreen ───────────────────────────────────────────────────────────────
 export function HomeScreen({ navigation }) {
   const { handleStart, handleSubscription } = useHomeViewModel(navigation);
+  // ScreenWrapper applies insets.top/bottom via safeContent padding.
+  // We add extra top padding for the greeting row so it doesn't crowd
+  // the status bar on either device.
   return (
     <ScreenWrapper>
       <StatusBar
@@ -554,7 +591,11 @@ const styles = StyleSheet.create({
   fullscreen: { flex: 1 },
 
   // Voice
-  voice_center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  voice_center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   voice_ring1: {
     position: 'absolute',
     width: 160,
@@ -589,7 +630,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 16,
     paddingHorizontal: SPACING.xl,
-    paddingBottom: 60,
+    paddingTop: SPACING.md,
   },
   voice_pauseBtn: {
     flex: 1,
@@ -612,7 +653,7 @@ const styles = StyleSheet.create({
   },
   voice_endText: { color: '#FCA5A5', fontSize: 15, fontWeight: '600' },
 
-  // Center layout
+  // Center layout — no hardcoded padding, ScreenWrapper.safeContent handles insets
   center_screen: {
     flex: 1,
     alignItems: 'center',
@@ -690,11 +731,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Human Chat
+  // Human Chat header — paddingTop is applied inline via insets
   chat_header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 44,
     paddingBottom: 14,
     paddingHorizontal: SPACING.md,
     borderBottomWidth: 1,
@@ -716,13 +756,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Shared input
+  // Shared input — paddingBottom applied inline via insets
   shared_inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
-    paddingBottom: 16,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: 'rgba(167,139,250,0.1)',
     gap: 8,
@@ -796,8 +835,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // Home
-  home_container: { flex: 1, paddingHorizontal: SPACING.lg, paddingTop: 52 },
+  // Home — paddingTop: SPACING.lg gives breathing room below the status bar
+  // (ScreenWrapper.safeContent already has paddingTop = insets.top)
+  home_container: {
+    flex: 1,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+  },
   home_top: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -855,8 +899,8 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // Subscription
-  sub_scroll: { paddingHorizontal: SPACING.lg, paddingTop: 60 },
+  // Subscription — safeContent handles top inset; extra paddingTop here gives space
+  sub_scroll: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg },
   plan_card: {
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: RADIUS.lg,

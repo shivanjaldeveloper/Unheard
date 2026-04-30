@@ -122,4 +122,25 @@ export const ApiService = {
     await delay(300);
     return { success: true };
   },
+  getChatList: async () => {
+    const token = await getUserToken();
+    const url = `${BASE_URL}/chatlist?token=${encodeURIComponent(token)}`;
+    console.log('[getChatList] POST', url);
+
+    const response = await axios.post(url, null, {
+      headers: { Authorization: API_BEARER },
+    });
+    console.log(
+      '[getChatList] Response:',
+      JSON.stringify(response.data, null, 2),
+    );
+
+    const data = response.data;
+    // Handle multiple possible response shapes
+    if (Array.isArray(data)) return data;
+    if (data?.chats) return data.chats;
+    if (data?.data) return data.data;
+    if (data?.chatlist) return data.chatlist;
+    return [];
+  },
 };

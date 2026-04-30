@@ -7,6 +7,7 @@ import {
   Animated,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../../theme';
 
 // ─── Primary Button ───────────────────────────────────────────────────────────
@@ -54,8 +55,12 @@ export function BackButton({ onPress }) {
   );
 }
 
-// ─── Dark Screen Wrapper ──────────────────────────────────────────────────────
+// ─── Screen Wrapper ───────────────────────────────────────────────────────────
+// Handles safe area for both gesture nav (Moto Edge 60 Pro) and
+// button nav (Redmi A4). Content never hides behind status bar,
+// notch, home indicator, or gesture bar.
 export function ScreenWrapper({ children, style }) {
+  const insets = useSafeAreaInsets();
   return (
     <LinearGradient
       colors={COLORS.darkBackgroundGradient}
@@ -63,13 +68,26 @@ export function ScreenWrapper({ children, style }) {
       end={{ x: 1, y: 1 }}
       style={[styles.screen, style]}
     >
-      {children}
+      <View
+        style={[
+          styles.safeContent,
+          {
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
+          },
+        ]}
+      >
+        {children}
+      </View>
     </LinearGradient>
   );
 }
 
 // ─── Full Dark Screen Wrapper ─────────────────────────────────────────────────
 export function DarkScreenWrapper({ children, style }) {
+  const insets = useSafeAreaInsets();
   return (
     <LinearGradient
       colors={['#0f0c29', '#1e1b2e', '#13111c']}
@@ -77,7 +95,19 @@ export function DarkScreenWrapper({ children, style }) {
       end={{ x: 1, y: 1 }}
       style={[styles.screen, style]}
     >
-      {children}
+      <View
+        style={[
+          styles.safeContent,
+          {
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
+          },
+        ]}
+      >
+        {children}
+      </View>
     </LinearGradient>
   );
 }
@@ -254,6 +284,7 @@ export function EmotionCard({ emotion, isSelected, onPress, animValue }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  safeContent: { flex: 1 },
   primaryBtn: {
     width: '80%',
     borderRadius: RADIUS.xl,
